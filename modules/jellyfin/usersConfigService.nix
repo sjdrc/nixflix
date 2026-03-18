@@ -55,10 +55,10 @@ in
 
         source ${authUtil.authScript}
 
-        echo "Fetching users from $BASE_URL/Users/All..."
+        echo "Fetching users from $BASE_URL/Users..."
         USERS_RESPONSE=$(${
           mkSecureCurl authUtil.token {
-            url = "$BASE_URL/Users/All";
+            url = "$BASE_URL/Users";
             apiKeyHeader = "Authorization";
             extraArgs = "-w \"\n%{http_code}\"";
           }
@@ -72,6 +72,21 @@ in
         if [ "$USERS_HTTP_CODE" -lt 200 ] || [ "$USERS_HTTP_CODE" -ge 300 ]; then
           echo "Failed to fetch users from Jellyfin API (HTTP $USERS_HTTP_CODE)" >&2
           exit 1
+        fi
+
+        # GET /Users excludes the authenticated admin user when using a session token.
+        # Fetch /Users/Me and merge into the list so admin users can be found by name.
+        ME_JSON=$(${
+          mkSecureCurl authUtil.token {
+            url = "$BASE_URL/Users/Me";
+            apiKeyHeader = "Authorization";
+          }
+        })
+        ME_ID=$(echo "$ME_JSON" | ${pkgs.jq}/bin/jq -r '.Id // empty' 2>/dev/null || true)
+        if [ -n "$ME_ID" ]; then
+          USERS_JSON=$(echo "$USERS_JSON" | ${pkgs.jq}/bin/jq --argjson me "$ME_JSON" \
+            'if any(.[]; .Id == $me.Id) then . else . + [$me] end')
+          echo "Merged authenticated user into user list (ID: $ME_ID)"
         fi
 
         ${concatStringsSep "\n" (
@@ -125,7 +140,7 @@ in
 
                 USERS_JSON=$(${
                   mkSecureCurl authUtil.token {
-                    url = "$BASE_URL/Users/All";
+                    url = "$BASE_URL/Users";
                     apiKeyHeader = "Authorization";
                   }
                 })

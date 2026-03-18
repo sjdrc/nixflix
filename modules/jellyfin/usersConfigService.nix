@@ -55,10 +55,10 @@ in
 
         source ${authUtil.authScript}
 
-        echo "Fetching users from $BASE_URL/Users..."
+        echo "Fetching users from $BASE_URL/Users/All..."
         USERS_RESPONSE=$(${
           mkSecureCurl authUtil.token {
-            url = "$BASE_URL/users";
+            url = "$BASE_URL/Users/All";
             apiKeyHeader = "Authorization";
             extraArgs = "-w \"\n%{http_code}\"";
           }
@@ -87,7 +87,7 @@ in
               echo "Processing user: ${userName}"
               echo "=========================================="
 
-              USER_ID=$(echo "$USERS_JSON" | ${pkgs.jq}/bin/jq -r --arg name ${escapeShellArg userName} '.[] | select(.Name == $name) | .Id' || echo "")
+              USER_ID=$(echo "$USERS_JSON" | ${pkgs.jq}/bin/jq -r --arg name ${escapeShellArg userName} '.[] | select(.Name | ascii_downcase == ($name | ascii_downcase)) | .Id' || echo "")
               echo "Found USER_ID for ${userName}: $USER_ID"
               IS_NEW_USER=false
 
@@ -125,15 +125,15 @@ in
 
                 USERS_JSON=$(${
                   mkSecureCurl authUtil.token {
-                    url = "$BASE_URL/Users";
+                    url = "$BASE_URL/Users/All";
                     apiKeyHeader = "Authorization";
                   }
                 })
-                USER_ID=$(echo "$USERS_JSON" | ${pkgs.jq}/bin/jq -r --arg name ${escapeShellArg userName} '.[] | select(.Name == $name) | .Id')
+                USER_ID=$(echo "$USERS_JSON" | ${pkgs.jq}/bin/jq -r --arg name ${escapeShellArg userName} '.[] | select(.Name | ascii_downcase == ($name | ascii_downcase)) | .Id')
               fi
 
               echo "Current user settings from server:"
-              echo "$USERS_JSON" | ${pkgs.jq}/bin/jq --arg name ${escapeShellArg userName} '.[] | select(.Name == $name)'
+              echo "$USERS_JSON" | ${pkgs.jq}/bin/jq --arg name ${escapeShellArg userName} '.[] | select(.Name | ascii_downcase == ($name | ascii_downcase))'
 
               echo ""
               echo "Configured payload to send:"

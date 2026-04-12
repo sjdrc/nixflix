@@ -20,6 +20,7 @@ in
     ./postgres.nix
     ./prowlarr
     ./radarr.nix
+    ./readarr.nix
     ./recyclarr
     ./sonarr-anime.nix
     ./sonarr.nix

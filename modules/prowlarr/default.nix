@@ -11,6 +11,7 @@ let
   arrServices =
     optional nixflix.lidarr.enable "lidarr"
     ++ optional nixflix.radarr.enable "radarr"
+    ++ optional nixflix.readarr.enable "readarr"
     ++ optional nixflix.sonarr.enable "sonarr"
     ++ optional nixflix.sonarr-anime.enable "sonarr-anime";
 

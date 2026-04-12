@@ -34,10 +34,16 @@ let
           description = "The categories to use for the Lidarr instance";
         };
 
+        readarr = mkOption {
+          type = types.str;
+          default = "readarr";
+          description = "The categories to use for the Readarr instance";
+        };
+
         prowlarr = mkOption {
           type = types.str;
           default = "prowlarr";
-          description = "The categories to use for the Lidarr instance";
+          description = "The categories to use for the Prowlarr instance";
         };
       };
     };

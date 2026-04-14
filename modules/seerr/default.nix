@@ -7,8 +7,9 @@
 with lib;
 let
   secrets = import ../../lib/secrets { inherit lib; };
+  inherit (import ../../lib/mkVirtualHosts.nix { inherit lib config; }) mkVirtualHost;
   cfg = config.nixflix.seerr;
-  hostname = "${cfg.subdomain}.${config.nixflix.nginx.domain}";
+  hostname = "${cfg.subdomain}.${config.nixflix.reverseProxy.domain}";
 in
 {
   imports = [
@@ -21,7 +22,15 @@ in
     ./userSettingsService.nix
   ];
 
-  config = mkIf (config.nixflix.enable && cfg.enable) {
+  config = mkIf (config.nixflix.enable && cfg.enable) (mkMerge [
+    (mkVirtualHost {
+      inherit hostname;
+      inherit (cfg.reverseProxy) expose;
+      inherit (cfg) port;
+      themeParkService = "overseerr";
+      themeParkTag = "</head>";
+    })
+    {
     assertions =
       let
         radarrDefaults = filter (r: r.isDefault) (attrValues cfg.radarr);
@@ -180,7 +189,7 @@ in
         wantedBy = [ "multi-user.target" ];
 
         environment = {
-          HOST = mkIf config.nixflix.nginx.enable "127.0.0.1";
+          HOST = mkIf config.nixflix.reverseProxy.enable "127.0.0.1";
           PORT = toString cfg.port;
           CONFIG_DIRECTORY = cfg.dataDir;
         }
@@ -256,36 +265,6 @@ in
       allowedTCPPorts = [ cfg.port ];
     };
 
-    networking.hosts = mkIf (config.nixflix.nginx.enable && config.nixflix.nginx.addHostsEntries) {
-      "127.0.0.1" = [ hostname ];
-    };
-
-    services.nginx.virtualHosts."${hostname}" =
-      let
-        themeParkUrl = "https://theme-park.dev/css/base/overseerr/${config.nixflix.theme.name}.css";
-      in
-      mkIf config.nixflix.nginx.enable {
-        inherit (config.nixflix.nginx) forceSSL;
-        useACMEHost = if config.nixflix.nginx.enableACME then config.nixflix.nginx.domain else null;
-
-        locations."/" = {
-          proxyPass = "http://127.0.0.1:${toString cfg.port}";
-          recommendedProxySettings = true;
-          extraConfig = ''
-            proxy_redirect off;
-
-            ${
-              if config.nixflix.theme.enable then
-                ''
-                  proxy_set_header Accept-Encoding "";
-                  sub_filter '</head>' '<link rel="stylesheet" type="text/css" href="${themeParkUrl}"></head>';
-                  sub_filter_once on;
-                ''
-              else
-                ""
-            }
-          '';
-        };
-      };
-  };
+  }
+  ]);
 }

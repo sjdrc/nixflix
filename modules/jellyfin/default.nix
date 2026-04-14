@@ -8,8 +8,9 @@ with lib;
 let
   inherit (config) nixflix;
   inherit (config.nixflix) globals;
+  inherit (import ../../lib/mkVirtualHosts.nix { inherit lib config; }) mkVirtualHost;
   cfg = config.nixflix.jellyfin;
-  hostname = "${cfg.subdomain}.${nixflix.nginx.domain}";
+  hostname = "${cfg.subdomain}.${nixflix.reverseProxy.domain}";
 
   xml = import ./xml.nix { inherit lib; };
 
@@ -33,7 +34,15 @@ in
     ./usersConfigService.nix
   ];
 
-  config = mkIf (nixflix.enable && cfg.enable) {
+  config = mkIf (nixflix.enable && cfg.enable) (mkMerge [
+    (mkVirtualHost {
+      inherit hostname;
+      inherit (cfg.reverseProxy) expose;
+      port = cfg.network.internalHttpPort;
+      disableBuffering = true;
+      websocketUpgrade = true;
+    })
+    {
     nixflix.jellyfin.libraries = mkMerge [
       (mkIf (nixflix.sonarr.enable or false) {
         Shows = {
@@ -249,33 +258,6 @@ in
       ];
     };
 
-    networking.hosts = mkIf (nixflix.nginx.enable && nixflix.nginx.addHostsEntries) {
-      "127.0.0.1" = [ hostname ];
-    };
-
-    services.nginx.virtualHosts."${hostname}" = mkIf nixflix.nginx.enable {
-      inherit (config.nixflix.nginx) forceSSL;
-      useACMEHost = if config.nixflix.nginx.enableACME then config.nixflix.nginx.domain else null;
-
-      locations = {
-        "/" = {
-          proxyPass = "http://127.0.0.1:${toString cfg.network.internalHttpPort}";
-          recommendedProxySettings = true;
-          extraConfig = ''
-            proxy_set_header X-Real-IP $remote_addr;
-
-            proxy_buffering off;
-          '';
-        };
-        "/socket" = {
-          proxyPass = "http://127.0.0.1:${toString cfg.network.internalHttpPort}";
-          proxyWebsockets = true;
-          recommendedProxySettings = true;
-          extraConfig = ''
-            proxy_set_header X-Real-IP $remote_addr;
-          '';
-        };
-      };
-    };
-  };
+  }
+  ]);
 }

@@ -8,6 +8,7 @@ serviceName:
 with lib;
 let
   secrets = import ../../lib/secrets { inherit lib; };
+  inherit (import ../../lib/mkVirtualHosts.nix { inherit lib config; }) mkVirtualHost;
   inherit (config.nixflix) globals;
   cfg = config.nixflix.${serviceName};
   stateDir = "${config.nixflix.stateDir}/${serviceName}";
@@ -25,7 +26,7 @@ let
   delayProfiles = import ./delayProfiles.nix { inherit lib pkgs serviceName; };
   capitalizedName = toUpper (substring 0 1 serviceName) + substring 1 (-1) serviceName;
   usesMediaDirs = !(elem serviceName [ "prowlarr" ]);
-  hostname = "${cfg.subdomain}.${config.nixflix.nginx.domain}";
+  hostname = "${cfg.subdomain}.${config.nixflix.reverseProxy.domain}";
 
   serviceBase = builtins.elemAt (splitString "-" serviceName) 0;
 
@@ -81,7 +82,15 @@ in
     subdomain = mkOption {
       type = types.str;
       default = serviceName;
-      description = "Subdomain prefix for nginx reverse proxy. Service accessible at `<subdomain>.<domain>`.";
+      description = "Subdomain prefix for reverse proxy. Service accessible at `<subdomain>.<domain>`.";
+    };
+
+    reverseProxy = {
+      expose = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Whether to expose this service via the reverse proxy.";
+      };
     };
 
     settings = mkOption {
@@ -205,7 +214,14 @@ in
     };
   };
 
-  config = mkIf (config.nixflix.enable && cfg.enable) {
+  config = mkIf (config.nixflix.enable && cfg.enable) (mkMerge [
+    (mkVirtualHost {
+      inherit hostname;
+      inherit (cfg.reverseProxy) expose;
+      inherit (cfg.config.hostConfig) port;
+      themeParkService = serviceBase;
+    })
+    {
     assertions = [
       {
         assertion = cfg.vpn.enable -> config.nixflix.mullvad.enable;
@@ -254,37 +270,6 @@ in
         ];
       };
 
-      nginx.virtualHosts."${hostname}" = mkIf config.nixflix.nginx.enable {
-        inherit (config.nixflix.nginx) forceSSL;
-        useACMEHost = if config.nixflix.nginx.enableACME then config.nixflix.nginx.domain else null;
-
-        locations."/" =
-          let
-            themeParkUrl = "https://theme-park.dev/css/base/${serviceBase}/${config.nixflix.theme.name}.css";
-          in
-          {
-            proxyPass = "http://127.0.0.1:${builtins.toString cfg.config.hostConfig.port}";
-            recommendedProxySettings = true;
-            extraConfig = ''
-              proxy_redirect off;
-
-              ${
-                if config.nixflix.theme.enable then
-                  ''
-                    proxy_set_header Accept-Encoding "";
-                    sub_filter '</body>' '<link rel="stylesheet" type="text/css" href="${themeParkUrl}"></body>';
-                    sub_filter_once on;
-                  ''
-                else
-                  ""
-              }
-            '';
-          };
-      };
-    };
-
-    networking.hosts = mkIf (config.nixflix.nginx.enable && config.nixflix.nginx.addHostsEntries) {
-      "127.0.0.1" = [ hostname ];
     };
 
     users = {
@@ -456,5 +441,6 @@ in
     // optionalAttrs (usesMediaDirs && cfg.config.apiKey != null) {
       "${serviceName}-delayprofiles" = delayProfiles.mkService cfg.config;
     };
-  };
+  }
+  ]);
 }
